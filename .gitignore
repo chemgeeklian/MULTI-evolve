@@ -12,4 +12,4 @@ build
 *.log
 *.out
 *.err
-*.ipynb_checkpoints
+*.ipynb_checkpointsdata/dgoA/
