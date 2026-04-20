@@ -13,3 +13,4 @@ build
 *.out
 *.err
 *.ipynb_checkpointsdata/dgoA/
+data/dgoA
