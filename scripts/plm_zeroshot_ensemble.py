@@ -11,7 +11,6 @@ plm_zeroshot_ensemble.py \
 --wt-file apex.fasta \
 --pdb-files apex.cif, apex_2.cif \
 --chain-id A \
---variants 24 \
 --normalizing-method aa_substitution_type \
 --excluded-positions 1,14,41,112
 """
@@ -44,28 +43,29 @@ def parse_args():
         help='Chain ID to include in the zeroshot predictions'
     )
     parser.add_argument(
-        '--variants',
-        type=int,
-        required=True,
-        help='Number of variants to nominate per method'
-    )
-    parser.add_argument(
         '--normalizing-method',
         required=True,
         help='Method for normalizing fold-change scores to generate z-scores'
     )
     parser.add_argument(
-        '--excluded-positions', 
+        '--excluded-positions',
         required=False,
         help='Comma-separated list of positions to exclude from mutation'
     )
+    parser.add_argument(
+        '--muts-per-pos',
+        type=int,
+        default=3,
+        help='Max substitutions allowed per position (default: 1). '
+             'Set >1 to nominate multiple substitutions at the same position.'
+    )
 
     args = parser.parse_args()
-    
+
     # Process arguments
     args.pdb_files = [f.strip() for f in args.pdb_files.split(',')]
     args.excluded_positions = [int(p) for p in args.excluded_positions.split(',')] if args.excluded_positions else []
-    
+
     return args
 
 def main():
@@ -73,10 +73,10 @@ def main():
     args = parse_args()
     wt_file = args.wt_file
     pdb_files = args.pdb_files
-    variants = args.variants
     excluded_positions = args.excluded_positions
     normalizing_method = args.normalizing_method
     chain_id = args.chain_id
+    muts_per_pos = args.muts_per_pos
 
 
     wt_seq = str(SeqIO.read(wt_file, "fasta").seq)
@@ -89,18 +89,25 @@ def main():
     for pdb_file in pdb_files:
         esm_if_zeroshot_ls.append(zero_shot_esm_if_dms(wt_seq, pdb_file, chain_id = chain_id, scoring_strategy='wt-marginals'))
 
-    def sample_mutations(df, total_muts, excluded_positions):
+    def sample_mutations(df, excluded_positions, muts_per_pos=5):
+        """
+        Sample mutations from a sorted DataFrame.
 
+        Args:
+            df: DataFrame sorted by score (best first), must have a 'pos' column.
+            excluded_positions: list of positions to skip entirely.
+            muts_per_pos: max substitutions allowed per position (default 5).
+                          Set >1 to allow multiple substitutions at the same
+                          position.
+        """
         muts = []
-        pos = excluded_positions.copy()
-        
-        # iterate over each row
-        for index, row in df.iterrows():
-            if row['pos'] not in pos:
+        pos_counts = {p: muts_per_pos for p in excluded_positions}  # excluded = quota already full
+
+        for _, row in df.iterrows():
+            p = row['pos']
+            if pos_counts.get(p, 0) < muts_per_pos:
                 muts.append(row.to_frame().T)
-                pos.append(row['pos'])
-            if len(muts) == total_muts:
-                break
+                pos_counts[p] = pos_counts.get(p, 0) + 1
 
         result = pd.concat(muts, ignore_index=True)
         return result
@@ -188,27 +195,27 @@ def main():
 
     # ESM FC
 
-    muts_esm = sample_mutations(esm_zeroshot_sorted, variants, excluded_positions)
+    muts_esm = sample_mutations(esm_zeroshot_sorted, excluded_positions, muts_per_pos)
     muts_esm['esm_sampled'] = 1
 
-    # # ESM-IF FC
+    # ESM-IF FC
 
     esm_if_zeroshot.sort_values(by='average_model_logratio', ascending=False, inplace=True)
-    muts_esm_if = sample_mutations(esm_if_zeroshot, variants, excluded_positions)
+    muts_esm_if = sample_mutations(esm_if_zeroshot, excluded_positions, muts_per_pos)
     muts_esm_if['esm_if_sampled'] = 1
 
     # ESM Z
     df = esm_zeroshot_sorted.copy()
     activity_col = 'average_model_logratio'
     df = calculate_z_scores(df, normalizing_method, activity_col)
-    muts_esm_z = sample_mutations(df, variants, excluded_positions)
+    muts_esm_z = sample_mutations(df, excluded_positions, muts_per_pos)
     muts_esm_z['esm_z_sampled'] = 1
 
     # ESM-IF Z
     df = esm_if_zeroshot.copy()
     activity_col = 'average_model_logratio'
     df = calculate_z_scores(df, normalizing_method, activity_col)
-    muts_esm_if_z = sample_mutations(df, variants, excluded_positions)
+    muts_esm_if_z = sample_mutations(df, excluded_positions, muts_per_pos)
     muts_esm_if_z['esm_if_z_sampled'] = 1
 
     # Define dataframes to combine
@@ -221,7 +228,11 @@ def main():
 
     muts_combined = merge_mutation_dfs(dfs)
 
-    muts_combined.to_csv(os.path.join(os.path.dirname(wt_file), 'plm_zeroshot_ensemble_nominated_mutations.csv'))
+    # Keep only mutations agreed by at least 3 of the 4 ranking methods
+    sampled_cols = ['esm_sampled', 'esm_if_sampled', 'esm_z_sampled', 'esm_if_z_sampled']
+    muts_combined = muts_combined[muts_combined[sampled_cols].sum(axis=1) >= 3]
+
+    muts_combined.to_csv(os.path.join(os.path.dirname(wt_file), 'plm_zeroshot_ensemble_nominated_mutations.csv'), index=False)
 
 if __name__ == '__main__':
     main()
