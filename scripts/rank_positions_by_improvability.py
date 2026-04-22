@@ -82,10 +82,12 @@ def main():
 
     df = zero_shot_esm_dms(wt_seq)
 
+    # Extract position and wildtype amino acid from 'mutations' column
     df['pos'] = df['mutations'].apply(lambda x: int(x[1:-1]))
     df['wt_aa'] = df['mutations'].apply(lambda x: x[0])
     df = df[~df['pos'].isin(excluded)]
 
+    # Extract model logratio columns 
     model_logratio_cols = [c for c in df.columns if c.startswith('model_') and c.endswith('_logratio')]
     n_models = len(model_logratio_cols)
 
@@ -94,7 +96,6 @@ def main():
     I haven't tested use_esm_if.
     The score of ESM-IF is not scaled the same as ESM sequence-bsed score in the original code. So I normalized both scores to z-scores before averaging them into a combined score. 
     '''
-
     use_esm_if = bool(pdb_files)
     if use_esm_if:
         esm_if_dfs = []
@@ -148,6 +149,7 @@ def main():
         .sort_values(['n_above_wt', 'mean_logratio'], ascending=False)
     )
 
+    # output the csv with all positions ranked by improvability
     pos_out = os.path.join(out_dir, 'position_improvability.csv')
     pos_stats.to_csv(pos_out, index=False)
     print(f'\nAll positions ranked -> {pos_out}')
@@ -171,12 +173,14 @@ def main():
     top_muts = top_muts.merge(
         top_positions[['pos', 'n_above_wt', 'mean_logratio']], on='pos', how='left'
     )
-    
+
     out_cols = ['pos', 'wt_aa', 'mutations', 'rank_within_pos',
                 'combined_logratio', 'average_model_logratio', 
                 'n_above_wt', 'mean_logratio']
+    
     if use_esm_if:
         out_cols.insert(out_cols.index('average_model_logratio') + 1, 'esm_if_logratio')
+        
     top_muts = (
         top_muts[out_cols]
         .sort_values(['mean_logratio', 'rank_within_pos'], ascending=[False, True])
