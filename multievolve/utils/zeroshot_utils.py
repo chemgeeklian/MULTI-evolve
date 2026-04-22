@@ -10,12 +10,13 @@ from tqdm import tqdm
 
 from multievolve.utils.other_utils import read_msa, greedy_select, msa_splicer, AAs
 
-def zero_shot_esm_dms(wt_seq, 
+def zero_shot_esm_dms(wt_seq,
                     model_locations = ['esm1v_t33_650M_UR90S_1',
                     'esm1v_t33_650M_UR90S_2',
                     'esm1v_t33_650M_UR90S_3',
                     'esm1v_t33_650M_UR90S_4',
                     'esm1v_t33_650M_UR90S_5',
+                    #'esm2_t33_650M_UR50D',
                     'esm2_t36_3B_UR50D'],
                     scoring_strategy='wt-marginals',
                     num_msa_seqs=400,

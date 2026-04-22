@@ -4,6 +4,7 @@ esm_models = [
     'esm1v_t33_650M_UR90S_3',
     'esm1v_t33_650M_UR90S_4',
     'esm1v_t33_650M_UR90S_5',
+    'esm2_t33_650M_UR50D',
     'esm2_t36_3B_UR50D',
     'esm_if1_gvp4_t16_142M_UR50',
     'esm2_t48_15B_UR50D',
