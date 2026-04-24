@@ -29,6 +29,7 @@ python rank_positions_by_improvability.py \
     --top-n 10 \
     --top-k 5 \
     --excluded-positions 14,37,85,154,126
+    --out-dir ../data/
 """
 
 import argparse
